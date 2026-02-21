@@ -78,6 +78,7 @@ const createDonation = async (req, res) => {
 // @access  Private/NGO
 const acceptDonation = async (req, res) => {
   try {
+    const { requestedMeals } = req.body;
     const donation = await Donation.findById(req.params.id);
 
     if (!donation) {
@@ -88,9 +89,16 @@ const acceptDonation = async (req, res) => {
       return res.status(400).json({ message: 'Donation is not available' });
     }
 
+    // Validate requested meals
+    const mealsToAccept = requestedMeals || donation.meals;
+    if (mealsToAccept > donation.meals) {
+      return res.status(400).json({ message: 'Requested meals exceed available amount' });
+    }
+
     donation.status = 'Accepted';
     donation.ngo = req.user._id;
     donation.ngoName = req.user.ngoName;
+    donation.requestedMeals = mealsToAccept;
     donation.acceptedAt = new Date();
 
     await donation.save();

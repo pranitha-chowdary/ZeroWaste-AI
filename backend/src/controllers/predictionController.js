@@ -313,10 +313,177 @@ const getProductionOptimization = async (req, res) => {
   }
 };
 
+// @desc    Get ML-based production optimization with demand forecasting
+// @route   GET /api/predictions/ml-optimize
+// @access  Private/Restaurant
+const getMLOptimization = async (req, res) => {
+  try {
+    const restaurantId = req.user._id;
+
+    // Fetch all required data in parallel
+    const [inventory, menuItems, recentOrders] = await Promise.all([
+      Inventory.find({ restaurant: restaurantId }),
+      MenuItem.find({ restaurant: restaurantId }),
+      PreOrder.find({ 
+        restaurant: restaurantId,
+        createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
+      })
+    ]);
+
+    // Prepare historical sales data for ML service
+    const historicalData = [];
+    
+    // Process orders to extract sales data
+    recentOrders.forEach(order => {
+      const orderDate = new Date(order.createdAt);
+      order.items.forEach(item => {
+        if (item.menuItemId) {
+          const menuItem = menuItems.find(m => m._id.toString() === item.menuItemId.toString());
+          if (menuItem) {
+            historicalData.push({
+              date: orderDate.toISOString().split('T')[0],
+              dish_name: menuItem.name,
+              quantity_sold: item.quantity || 1,
+              selling_price: menuItem.price,
+              cost_price: menuItem.price * 0.6  // Assume 40% margin
+            });
+          }
+        } else if (item.dish) {
+          // Legacy format
+          const menuItem = menuItems.find(m => m.name === item.dish);
+          if (menuItem) {
+            historicalData.push({
+              date: orderDate.toISOString().split('T')[0],
+              dish_name: item.dish,
+              quantity_sold: item.quantity || 1,
+              selling_price: menuItem.price,
+              cost_price: menuItem.price * 0.6
+            });
+          }
+        }
+      });
+    });
+
+    // Prepare menu items data
+    const menuItemsData = menuItems.map(item => ({
+      name: item.name,
+      price: item.price,
+      stock: item.stock || 0,
+      category: item.category,
+      isAvailable: item.isAvailable
+    }));
+
+    // Prepare inventory data
+    const inventoryData = inventory.map(item => ({
+      ingredient: item.ingredient || item.itemName,
+      itemName: item.itemName || item.ingredient,
+      quantity: item.quantity,
+      status: item.status,
+      expiryDate: item.expiryDate
+    }));
+
+    // Call ML service
+    const axios = require('axios');
+    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:5002';
+
+    try {
+      const mlResponse = await axios.post(`${ML_SERVICE_URL}/predict`, {
+        historical_data: historicalData,
+        menu_items: menuItemsData,
+        inventory_data: inventoryData
+      }, {
+        timeout: 10000  // 10 second timeout
+      });
+
+      if (mlResponse.data.success) {
+        const productionPlan = mlResponse.data.production_plan;
+
+        // Format response to match frontend expectations
+        const response = {
+          summary: {
+            status: productionPlan.summary.high_waste_risk_count > 0 ? 'Caution' : 'Good',
+            optimizationScore: Math.round(100 - (productionPlan.summary.high_waste_risk_count / productionPlan.summary.total_dishes * 50)),
+            criticalAlerts: productionPlan.summary.high_waste_risk_count,
+            totalRecommendations: productionPlan.predictions.length
+          },
+          inventoryAnalysis: {
+            totalItems: inventory.length,
+            critical: inventory.filter(item => item.status === 'Critical').length,
+            nearExpiry: inventory.filter(item => item.status === 'Near Expiry').length,
+            good: inventory.filter(item => item.status === 'Good').length,
+            criticalItems: inventory
+              .filter(item => item.status === 'Critical')
+              .map(item => ({
+                ingredient: item.ingredient || item.itemName,
+                quantity: item.quantity,
+                expiry: item.expiry || new Date(item.expiryDate).toLocaleDateString(),
+                daysLeft: Math.ceil((item.expiryDate - new Date()) / (1000 * 60 * 60 * 24))
+              }))
+          },
+          recommendations: productionPlan.predictions.map(pred => ({
+            dish: pred.dish_name,
+            recommended: pred.recommended_production,
+            currentStock: pred.current_stock,
+            avgDailyDemand: Math.round(pred.predicted_demand),
+            potentialProfit: `₹${pred.expected_profit.toFixed(2)}`,
+            priority: pred.priority,
+            reason: pred.action,
+            category: menuItems.find(m => m.name === pred.dish_name)?.category || 'Other'
+          })),
+          wasteAlerts: productionPlan.waste_alerts.map(alert => ({
+            type: 'overstocking',
+            severity: alert.severity,
+            message: alert.message,
+            action: alert.action
+          })),
+          profitInsights: {
+            totalPotentialProfit: productionPlan.summary.expected_profit.toFixed(2),
+            topPerformers: productionPlan.predictions
+              .sort((a, b) => b.expected_profit - a.expected_profit)
+              .slice(0, 5)
+              .map((item, index) => ({
+                name: item.dish_name,
+                weeklyProfit: `₹${item.expected_profit.toFixed(2)}`,
+                demandTrend: item.predicted_demand > item.current_stock ? 'rising' : 'stable'
+              }))
+          },
+          menuAnalysis: {
+            topPerformers: productionPlan.predictions
+              .filter(p => p.predicted_demand > 10)
+              .map(p => p.dish_name),
+            lowDemand: productionPlan.predictions
+              .filter(p => p.predicted_demand < 5)
+              .map(p => p.dish_name)
+          },
+          donationSuggestions: productionPlan.donation_suggestions,
+          mlPowered: true,
+          lastUpdated: new Date().toISOString()
+        };
+
+        return res.json(response);
+      } else {
+        throw new Error('ML service returned unsuccessful response');
+      }
+
+    } catch (mlError) {
+      console.error('ML Service Error:', mlError.message);
+      
+      // Fallback to rule-based optimization if ML service fails
+      // (Use the existing getProductionOptimization logic)
+      return getProductionOptimization(req, res);
+    }
+
+  } catch (error) {
+    console.error('Optimization Error:', error);
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getDemandPredictions,
   getProductionRecommendations,
   createPrediction,
   updateActualProduction,
-  getProductionOptimization
+  getProductionOptimization,
+  getMLOptimization
 };

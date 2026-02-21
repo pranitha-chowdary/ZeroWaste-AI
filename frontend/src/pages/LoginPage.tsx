@@ -16,7 +16,6 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       setError('Please enter a valid email address');
@@ -24,12 +23,9 @@ export default function LoginPage() {
     }
     
     setIsLoading(true);
-
     try {
       await login(email, password);
-      
-      // Redirect based on user role after successful login
-      // This will happen after the user state is updated
+      // redirect handled by useEffect below
     } catch (err: any) {
       setError(err.message);
     } finally {

@@ -15,6 +15,10 @@ const donationSchema = new mongoose.Schema({
     required: true,
     min: 1
   },
+  requestedMeals: {
+    type: Number,
+    default: 0
+  },
   type: {
     type: String,
     required: true

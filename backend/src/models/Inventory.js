@@ -6,18 +6,25 @@ const inventorySchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  ingredient: {
+  itemName: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  category: {
     type: String,
     required: true,
     trim: true
   },
   quantity: {
-    type: String,
+    type: Number,
     required: true
   },
-  expiry: {
+  unit: {
     type: String,
-    required: true
+    required: true,
+    enum: ['kg', 'g', 'L', 'ml', 'units', 'packets'],
+    default: 'kg'
   },
   expiryDate: {
     type: Date,
@@ -27,6 +34,14 @@ const inventorySchema = new mongoose.Schema({
     type: String,
     enum: ['Good', 'Near Expiry', 'Critical'],
     default: 'Good'
+  },
+  // Legacy fields for backward compatibility
+  ingredient: {
+    type: String,
+    trim: true
+  },
+  expiry: {
+    type: String
   }
 }, {
   timestamps: true

@@ -21,7 +21,17 @@ export default function StatCard({
   animate = true
 }: StatCardProps) {
   const [displayValue, setDisplayValue] = useState(0);
-  const numericValue = typeof value === 'string' ? parseInt(value.replace(/\D/g, '')) : value;
+  
+  // Safely handle value conversion and NaN/undefined/null cases
+  let numericValue: number;
+  if (value === null || value === undefined) {
+    numericValue = 0;
+  } else if (typeof value === 'string') {
+    const parsed = parseInt(value.replace(/\D/g, ''));
+    numericValue = isNaN(parsed) ? 0 : parsed;
+  } else {
+    numericValue = isNaN(value) ? 0 : value;
+  }
 
   useEffect(() => {
     if (animate && typeof numericValue === 'number') {
@@ -56,13 +66,18 @@ export default function StatCard({
     purple: 'text-purple-500'
   };
 
+  // Safe display value
+  const safeDisplayValue = (value === null || value === undefined || (typeof value === 'number' && isNaN(value))) 
+    ? 0 
+    : value;
+
   return (
     <div className={`bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses] || colorClasses.orange} backdrop-blur-xl border rounded-2xl p-6 hover:scale-105 transition-all duration-300 shadow-lg`}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <p className="text-gray-300 text-sm font-medium mb-1">{title}</p>
           <h3 className="text-3xl font-bold text-white mb-1">
-            {animate && typeof numericValue === 'number' ? displayValue : value}
+            {animate && typeof numericValue === 'number' && !isNaN(numericValue) ? displayValue : safeDisplayValue}
           </h3>
           {subtitle && (
             <p className="text-gray-400 text-xs">{subtitle}</p>

@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
+import OTPVerification from '../components/OTPVerification';
+import { authAPI } from '../services/api';
 import { UserPlus, Mail, Lock, User, Phone, MapPin, Building, AlertCircle } from 'lucide-react';
 
 export default function SignupPage() {
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, verifyRegistration } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -22,6 +24,13 @@ export default function SignupPage() {
   });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // OTP state
+  const [showOTP, setShowOTP] = useState(false);
+  const [otpEmail, setOtpEmail] = useState('');
+  const [pendingUserData, setPendingUserData] = useState<any>(null);
+  const [otpError, setOtpError] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -69,18 +78,53 @@ export default function SignupPage() {
         userData.distance = formData.distance;
       }
 
-      await register(userData);
+      const result = await register(userData);
 
-      // Redirect to pending approval if restaurant/ngo, otherwise to dashboard
-      if (formData.role === 'restaurant' || formData.role === 'ngo') {
-        navigate('/pending-approval');
-      } else if (formData.role === 'customer') {
-        navigate('/customer');
+      if (result.requiresOTP) {
+        // Show OTP verification screen
+        setOtpEmail(formData.email);
+        setPendingUserData(userData);
+        setShowOTP(true);
+      } else {
+        // Direct registration (no OTP) — navigate to dashboard
+        navigateByRole(formData.role);
       }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const navigateByRole = (role: string) => {
+    if (role === 'restaurant' || role === 'ngo') {
+      navigate('/pending-approval');
+    } else if (role === 'customer') {
+      navigate('/customer');
+    } else {
+      navigate('/');
+    }
+  };
+
+  const handleOTPVerify = async (otp: string) => {
+    setOtpError('');
+    setOtpLoading(true);
+    try {
+      await verifyRegistration(otpEmail, otp, pendingUserData);
+      navigateByRole(pendingUserData?.role || 'customer');
+    } catch (err: any) {
+      setOtpError(err.message || 'Invalid OTP. Please try again.');
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleOTPResend = async () => {
+    setOtpError('');
+    try {
+      await authAPI.resendOTP({ email: otpEmail, purpose: 'registration' });
+    } catch (err: any) {
+      setOtpError(err.message || 'Failed to resend OTP');
     }
   };
 
@@ -97,6 +141,28 @@ export default function SignupPage() {
         }}
       >
         <div className="absolute inset-0 bg-gradient-to-br from-[#1F1F1F]/95 via-[#1F1F1F]/90 to-[#2D6A4F]/80" />
+
+        {/* OTP Verification Screen */}
+        {showOTP ? (
+          <div className="relative z-10 w-full max-w-md my-8">
+            <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 shadow-2xl">
+              <button
+                onClick={() => { setShowOTP(false); setOtpError(''); }}
+                className="mb-4 text-gray-400 hover:text-white flex items-center gap-2 text-sm transition-colors"
+              >
+                ← Back to form
+              </button>
+              <OTPVerification
+                email={otpEmail}
+                purpose="registration"
+                onVerify={handleOTPVerify}
+                onResend={handleOTPResend}
+                isLoading={otpLoading}
+                error={otpError}
+              />
+            </div>
+          </div>
+        ) : (
 
         <div className="relative z-10 w-full max-w-2xl my-8">
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 shadow-2xl">
@@ -327,6 +393,7 @@ export default function SignupPage() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

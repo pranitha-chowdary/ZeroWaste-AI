@@ -19,18 +19,24 @@ const getInventory = async (req, res) => {
 // @access  Private/Restaurant
 const addInventoryItem = async (req, res) => {
   try {
-    const { ingredient, quantity, expiry, expiryDate } = req.body;
+    const { itemName, category, quantity, unit, expiryDate, status, ingredient, expiry } = req.body;
 
     const inventoryItem = await Inventory.create({
       restaurant: req.user._id,
-      ingredient,
+      itemName: itemName || ingredient,
+      category: category || 'Other',
       quantity,
-      expiry,
-      expiryDate: new Date(expiryDate)
+      unit: unit || 'kg',
+      expiryDate: new Date(expiryDate),
+      status: status || 'Good',
+      // Legacy fields
+      ingredient: ingredient || itemName,
+      expiry: expiry || new Date(expiryDate).toLocaleDateString()
     });
 
     res.status(201).json(inventoryItem);
   } catch (error) {
+    console.error('Error creating inventory:', error);
     res.status(500).json({ message: error.message });
   }
 };

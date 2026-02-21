@@ -14,8 +14,9 @@ interface User {
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  register: (userData: any) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requiresOTP: boolean }>;
+  register: (userData: any) => Promise<{ requiresOTP: boolean; email?: string; tempData?: any }>;
+  verifyRegistration: (email: string, otp: string, userData: any) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -54,10 +55,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const response = await authAPI.login({ email, password });
       const { token: newToken, ...userData } = response.data;
-      
       localStorage.setItem('token', newToken);
       setToken(newToken);
-      setUser(userData);
+      setUser(userData as User);
+      return { requiresOTP: false };
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Login failed');
     }
@@ -66,13 +67,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (userData: any) => {
     try {
       const response = await authAPI.register(userData);
-      const { token: newToken, ...user } = response.data;
-      
-      localStorage.setItem('token', newToken);
-      setToken(newToken);
-      setUser(user);
+      // OTP flow: backend returns { requiresOTP: true, email, tempData }
+      if (response.data.requiresOTP) {
+        return { requiresOTP: true, email: response.data.email, tempData: response.data.tempData };
+      }
+      // Fallback: direct registration (no OTP) — shouldn't happen but handle anyway
+      const { token: newToken, ...userData2 } = response.data;
+      if (newToken) {
+        localStorage.setItem('token', newToken);
+        setToken(newToken);
+        setUser(userData2 as User);
+      }
+      return { requiresOTP: false };
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Registration failed');
+    }
+  };
+
+  const verifyRegistration = async (email: string, otp: string, userData: any) => {
+    try {
+      const response = await authAPI.verifyRegistration({ email, otp, userData });
+      const { token: newToken, ...user } = response.data;
+      localStorage.setItem('token', newToken);
+      setToken(newToken);
+      setUser(user as User);
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'OTP verification failed');
     }
   };
 
@@ -89,6 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         token,
         login,
         register,
+        verifyRegistration,
         logout,
         isAuthenticated: !!user,
         isLoading,

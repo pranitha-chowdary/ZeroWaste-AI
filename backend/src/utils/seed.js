@@ -247,54 +247,60 @@ const seedDatabase = async () => {
 
     await Inventory.create({
       restaurant: restaurant1._id,
-      ingredient: 'Tomatoes',
-      quantity: '15 kg',
-      expiry: '5 days',
+      itemName: 'Tomatoes',
+      category: 'Vegetables',
+      quantity: 15,
+      unit: 'kg',
       expiryDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
       status: 'Good'
     });
 
     await Inventory.create({
       restaurant: restaurant1._id,
-      ingredient: 'Paneer',
-      quantity: '8 kg',
-      expiry: '2 days',
+      itemName: 'Paneer',
+      category: 'Dairy',
+      quantity: 8,
+      unit: 'kg',
       expiryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
       status: 'Near Expiry'
     });
 
     await Inventory.create({
       restaurant: restaurant1._id,
-      ingredient: 'Rice',
-      quantity: '50 kg',
-      expiry: '60 days',
+      itemName: 'Rice',
+      category: 'Grains',
+      quantity: 50,
+      unit: 'kg',
       expiryDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
       status: 'Good'
     });
 
     await Inventory.create({
       restaurant: restaurant1._id,
-      ingredient: 'Dal (Lentils)',
-      quantity: '25 kg',
-      expiry: '45 days',
+      itemName: 'Dal (Lentils)',
+      category: 'Grains',
+      quantity: 25,
+      unit: 'kg',
       expiryDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
       status: 'Good'
     });
 
     await Inventory.create({
       restaurant: restaurant1._id,
-      ingredient: 'Fresh Vegetables',
-      quantity: '12 kg',
-      expiry: '1 day',
+      itemName: 'Fresh Vegetables',
+      category: 'Vegetables',
+      quantity: 12,
+      unit: 'kg',
       expiryDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
       status: 'Critical'
     });
 
     await Inventory.create({
       restaurant: restaurant1._id,
-      ingredient: 'Milk',
-      quantity: '10 liters',
-      expiry: '2 days',
+      itemName: 'Milk',
+      category: 'Dairy',
+      quantity: 10,
+      unit: 'L',
       expiryDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
       status: 'Near Expiry'
     });

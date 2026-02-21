@@ -22,7 +22,8 @@ import {
   Edit,
   Trash2,
   X,
-  Clock
+  Clock,
+  Sparkles
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { menuAPI, orderAPI, inventoryAPI, donationAPI, predictionAPI } from '../services/api';
@@ -65,8 +66,13 @@ interface InventoryItem {
 interface Donation {
   _id: string;
   meals: number;
+  requestedMeals?: number;
+  type: string;
+  expiry: string;
   pickupTime: string;
   status: string;
+  ngoName?: string;
+  acceptedAt?: string;
 }
 
 export default function RestaurantDashboard() {
@@ -78,6 +84,8 @@ export default function RestaurantDashboard() {
   const [donations, setDonations] = useState<Donation[]>([]);
   const [optimization, setOptimization] = useState<any>(null);
   const [showMenuForm, setShowMenuForm] = useState(false);
+  const [showDonationForm, setShowDonationForm] = useState(false);
+  const [showInventoryForm, setShowInventoryForm] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [formData, setFormData] = useState<MenuItem>({
     name: '',
@@ -87,6 +95,20 @@ export default function RestaurantDashboard() {
     stock: 0,
     category: '',
     isAvailable: true
+  });
+  const [inventoryFormData, setInventoryFormData] = useState({
+    itemName: '',
+    category: '',
+    quantity: 0,
+    unit: 'kg',
+    expiryDate: '',
+    status: 'Good'
+  });
+  const [donationFormData, setDonationFormData] = useState({
+    meals: 0,
+    type: '',
+    expiry: '',
+    expiryTime: ''
   });
 
   const sidebarItems = [
@@ -157,8 +179,17 @@ export default function RestaurantDashboard() {
 
   const fetchOptimization = async () => {
     try {
-      const response = await predictionAPI.getOptimization();
-      setOptimization(response.data);
+      // Try ML-powered optimization first
+      try {
+        const mlResponse = await predictionAPI.getMLOptimization();
+        setOptimization(mlResponse.data);
+        console.log('Using ML-powered optimization');
+      } catch (mlError) {
+        // Fallback to rule-based optimization if ML service unavailable
+        console.log('ML service unavailable, using rule-based optimization');
+        const response = await predictionAPI.getOptimization();
+        setOptimization(response.data);
+      }
     } catch (error) {
       console.error('Failed to fetch optimization:', error);
     }
@@ -212,11 +243,93 @@ export default function RestaurantDashboard() {
     setShowMenuForm(false);
   };
 
+  const handleSubmitDonation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await donationAPI.create(donationFormData);
+      fetchDonations();
+      resetDonationForm();
+      alert('Donation created successfully! NGOs will be notified.');
+    } catch (error) {
+      console.error('Failed to create donation:', error);
+      alert('Failed to create donation. Please try again.');
+    }
+  };
+
+  const resetDonationForm = () => {
+    setDonationFormData({
+      meals: 0,
+      type: '',
+      expiry: '',
+      expiryTime: ''
+    });
+    setShowDonationForm(false);
+  };
+
+  const handleSubmitInventory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await inventoryAPI.create(inventoryFormData);
+      fetchInventory();
+      resetInventoryForm();
+    } catch (error) {
+      console.error('Error creating inventory item:', error);
+    }
+  };
+
+  const resetInventoryForm = () => {
+    setInventoryFormData({
+      itemName: '',
+      category: '',
+      quantity: 0,
+      unit: 'kg',
+      expiryDate: '',
+      status: 'Good'
+    });
+    setShowInventoryForm(false);
+  };
+
+  // Calculate real-time impact analytics from donations with safe defaults
+  const totalMealsDonated = donations.reduce((sum, d) => sum + (d.meals || 0), 0);
+  const acceptedDonations = donations.filter(d => d.status === 'Accepted' || d.status === 'Delivered');
+  const mealsAccepted = acceptedDonations.reduce((sum, d) => sum + (d.requestedMeals || d.meals || 0), 0);
+  const deliveredDonations = donations.filter(d => d.status === 'Delivered');
+  const mealsDelivered = deliveredDonations.reduce((sum, d) => sum + (d.requestedMeals || d.meals || 0), 0);
+  
+  // Environmental impact calculations with safe defaults
+  const avgKgPerMeal = 0.5; // Average 0.5kg of food per meal
+  const foodWastePrevented = mealsAccepted * avgKgPerMeal || 0; // in kg
+  const co2SavedPerKg = 2.5; // 2.5kg CO₂ per kg of food waste prevented
+  const co2Saved = foodWastePrevented * co2SavedPerKg || 0; // in kg
+  const avgCostPerMeal = 150; // Average ₹150 per meal
+  const moneySaved = mealsAccepted * avgCostPerMeal || 0; // in rupees
+  
+  // Calculate waste distribution (removed = donations requested, active = pending)
+  const pendingMeals = donations.filter(d => d.status === 'Pending').reduce((sum, d) => sum + d.meals, 0);
+  const totalMeals = totalMealsDonated || 1; // Avoid division by zero
+  
   const wasteData = [
-    { name: 'Reduced', value: 65, color: '#2D6A4F' },
-    { name: 'Donated', value: 20, color: '#E85D04' },
-    { name: 'Consumed', value: 15, color: '#FFF8E7' }
+    { 
+      name: 'Donated & Accepted', 
+      value: Math.round((mealsAccepted / totalMeals) * 100) || 0, 
+      color: '#2D6A4F' 
+    },
+    { 
+      name: 'Pending Donation', 
+      value: Math.round((pendingMeals / totalMeals) * 100) || 0, 
+      color: '#E85D04' 
+    },
+    { 
+      name: 'Delivered', 
+      value: Math.round((mealsDelivered / totalMeals) * 100) || 0, 
+      color: '#FFF8E7' 
+    }
   ];
+  
+  // Calculate sustainability score (0-100)
+  const donationRate = totalMealsDonated > 0 ? (mealsAccepted / totalMealsDonated) * 100 : 0;
+  const deliveryRate = mealsAccepted > 0 ? (mealsDelivered / mealsAccepted) * 100 : 0;
+  const sustainabilityScore = Math.round((donationRate * 0.6) + (deliveryRate * 0.4));
 
   const notifyNGO = () => {
     setShowNotification(true);
@@ -450,28 +563,28 @@ export default function RestaurantDashboard() {
                   <div className="grid md:grid-cols-4 gap-6">
                     <StatCard
                       title="System Status"
-                      value={optimization.summary.status}
-                      icon={optimization.summary.status === 'Good' ? CheckCircle : AlertTriangle}
-                      color={optimization.summary.status === 'Good' ? 'green' : 'orange'}
+                      value={optimization.summary?.status || 'N/A'}
+                      icon={optimization.summary?.status === 'Good' ? CheckCircle : AlertTriangle}
+                      color={optimization.summary?.status === 'Good' ? 'green' : 'orange'}
                       subtitle="Overall health"
                     />
                     <StatCard
                       title="Optimization Score"
-                      value={`${optimization.summary.optimizationScore}%`}
+                      value={`${optimization.summary?.optimizationScore || 0}%`}
                       icon={Brain}
                       color="blue"
                       subtitle="Efficiency rating"
                     />
                     <StatCard
                       title="Critical Alerts"
-                      value={optimization.summary.criticalAlerts}
+                      value={optimization.summary?.criticalAlerts || 0}
                       icon={AlertTriangle}
                       color="red"
                       subtitle="Require attention"
                     />
                     <StatCard
                       title="Recommendations"
-                      value={optimization.summary.totalRecommendations}
+                      value={optimization.summary?.totalRecommendations || 0}
                       icon={Brain}
                       color="green"
                       subtitle="Smart insights"
@@ -632,7 +745,7 @@ export default function RestaurantDashboard() {
 
                       <div className="mb-6">
                         <p className="text-gray-400 text-sm mb-2">Total Potential Profit (Today)</p>
-                        <p className="text-green-400 text-4xl font-bold">${optimization.profitInsights.totalPotentialProfit}</p>
+                        <p className="text-green-400 text-4xl font-bold">₹{optimization.profitInsights.totalPotentialProfit}</p>
                       </div>
 
                       <div>
@@ -656,6 +769,113 @@ export default function RestaurantDashboard() {
                       </div>
                     </div>
                   </div>
+                  
+                  {/* Donation Impact & Waste Reduction */}
+                  <div className="bg-gradient-to-br from-orange-500/20 to-green-500/20 backdrop-blur-xl border border-orange-500/30 rounded-2xl p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <Heart className="text-orange-500" size={32} />
+                      <div>
+                        <h2 className="text-2xl font-bold text-white">Real-time Donation Impact</h2>
+                        <p className="text-gray-400 text-sm">How AI optimization drives food waste reduction</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid md:grid-cols-3 gap-4 mb-6">
+                      <div className="bg-white/10 border border-white/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Heart className="text-orange-400" size={20} />
+                          <p className="text-gray-400 text-sm">Meals Accepted</p>
+                        </div>
+                        <p className="text-white text-3xl font-bold">{mealsAccepted}</p>
+                        <p className="text-gray-400 text-xs mt-1">by NGOs (of {totalMealsDonated} offered)</p>
+                      </div>
+                      
+                      <div className="bg-white/10 border border-white/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Leaf className="text-green-400" size={20} />
+                          <p className="text-gray-400 text-sm">Food Waste Prevented</p>
+                        </div>
+                        <p className="text-green-400 text-3xl font-bold">{foodWastePrevented.toFixed(1)}</p>
+                        <p className="text-gray-400 text-xs mt-1">kg of food saved</p>
+                      </div>
+                      
+                      <div className="bg-white/10 border border-white/20 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Sparkles className="text-blue-400" size={20} />
+                          <p className="text-gray-400 text-sm">CO₂ Emissions Saved</p>
+                        </div>
+                        <p className="text-blue-400 text-3xl font-bold">{co2Saved.toFixed(1)}</p>
+                        <p className="text-gray-400 text-xs mt-1">kg CO₂ reduced</p>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-green-500 rounded-full flex items-center justify-center flex-shrink-0">
+                          <Brain className="text-white" size={24} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-white font-bold mb-2">AI-Driven Waste Reduction</h3>
+                          <p className="text-gray-300 text-sm mb-3">
+                            Our AI optimization engine analyzes your inventory and production patterns to identify surplus food 
+                            that can be donated. This smart approach has helped you donate <span className="text-orange-400 font-bold">{mealsAccepted} meals</span> (accepted by NGOs), 
+                            preventing <span className="text-green-400 font-bold">{foodWastePrevented.toFixed(1)} kg</span> of food waste.
+                          </p>
+                          <div className="flex items-center gap-2 text-sm">
+                            {mealsAccepted > 0 ? (
+                              <div className="flex items-center gap-2 bg-green-500/20 px-3 py-2 rounded-lg">
+                                <CheckCircle className="text-green-400" size={16} />
+                                <span className="text-green-400 font-semibold">
+                                  {mealsAccepted} meals accepted by NGOs • {((mealsAccepted/totalMealsDonated)*100).toFixed(0)}% acceptance rate
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 bg-yellow-500/20 px-3 py-2 rounded-lg">
+                                <AlertTriangle className="text-yellow-400" size={16} />
+                                <span className="text-yellow-400 font-semibold">
+                                  Create donations from surplus to maximize impact
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {donations.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-gray-400 text-sm font-semibold mb-3">Recent Donation Activity</p>
+                        <div className="space-y-2">
+                          {donations.slice(0, 3).map((donation, index) => (
+                            <div key={index} className="bg-white/5 border border-white/10 rounded-lg p-3 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  donation.status === 'Delivered' ? 'bg-green-400' :
+                                  donation.status === 'Accepted' ? 'bg-blue-400' :
+                                  'bg-yellow-400'
+                                }`} />
+                                <div>
+                                  <p className="text-white font-medium">{donation.meals} meals • {donation.type}</p>
+                                  <p className="text-gray-400 text-xs">
+                                    {donation.status === 'Accepted' || donation.status === 'Delivered' 
+                                      ? `${donation.ngoName || 'NGO'} • ${donation.requestedMeals || donation.meals} meals`
+                                      : 'Pending acceptance'}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                donation.status === 'Delivered' ? 'bg-green-500/20 text-green-400' :
+                                donation.status === 'Accepted' ? 'bg-blue-500/20 text-blue-400' :
+                                'bg-yellow-500/20 text-yellow-400'
+                              }`}>
+                                {donation.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -663,9 +883,18 @@ export default function RestaurantDashboard() {
 
           {activeTab === 'inventory' && (
             <div className="space-y-8">
-              <div>
-                <h1 className="text-4xl font-bold text-white mb-2">Inventory Management</h1>
-                <p className="text-gray-400">Track ingredient stock levels</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-4xl font-bold text-white mb-2">Inventory Management</h1>
+                  <p className="text-gray-400">Track ingredient stock levels and expiry dates</p>
+                </div>
+                <button
+                  onClick={() => setShowInventoryForm(true)}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#E85D04] to-[#2D6A4F] text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
+                >
+                  <Plus size={20} />
+                  Add Inventory Item
+                </button>
               </div>
 
               {inventory.length === 0 ? (
@@ -675,27 +904,63 @@ export default function RestaurantDashboard() {
                   <p className="text-gray-500 text-sm mt-2">Add items to track your inventory</p>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {inventory.map(item => (
-                    <div
-                      key={item._id}
-                      className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6 hover:scale-105 transition-all duration-300"
-                    >
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <h3 className="text-lg font-bold text-white mb-1">{item.itemName}</h3>
-                          <p className="text-2xl font-bold text-[#E85D04]">{item.quantity} {item.unit}</p>
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {inventory.map(item => {
+                    const daysUntilExpiry = Math.ceil((new Date(item.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                    const isExpiringSoon = daysUntilExpiry <= 3;
+                    const isExpired = daysUntilExpiry < 0;
+                    
+                    return (
+                      <div
+                        key={item._id}
+                        className={`bg-white/10 backdrop-blur-xl border rounded-2xl p-6 hover:scale-105 transition-all duration-300 ${
+                          isExpired ? 'border-red-500/50' : isExpiringSoon ? 'border-orange-500/50' : 'border-white/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <h3 className="text-lg font-bold text-white mb-1">{item.itemName}</h3>
+                            <p className="text-2xl font-bold text-[#E85D04]">{item.quantity} {item.unit}</p>
+                          </div>
+                          <Package className={`${
+                            isExpired ? 'text-red-500' : isExpiringSoon ? 'text-orange-500' : 'text-green-500'
+                          }`} size={24} />
                         </div>
-                        <Package className="text-green-500" size={24} />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">Category:</span>
-                          <span className="text-white font-medium">{item.category}</span>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Category:</span>
+                            <span className="text-white font-medium">{item.category}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Expiry Date:</span>
+                            <span className={`font-medium ${
+                              isExpired ? 'text-red-400' : isExpiringSoon ? 'text-orange-400' : 'text-white'
+                            }`}>
+                              {new Date(item.expiryDate).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Days Left:</span>
+                            <span className={`font-bold ${
+                              isExpired ? 'text-red-400' : isExpiringSoon ? 'text-orange-400' : 'text-green-400'
+                            }`}>
+                              {isExpired ? 'EXPIRED' : `${daysUntilExpiry}d`}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-400">Status:</span>
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                              item.status === 'Critical' ? 'bg-red-500/20 text-red-400' :
+                              item.status === 'Near Expiry' ? 'bg-orange-500/20 text-orange-400' :
+                              'bg-green-500/20 text-green-400'
+                            }`}>
+                              {item.status}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -703,9 +968,18 @@ export default function RestaurantDashboard() {
 
           {activeTab === 'surplus' && (
             <div className="space-y-8">
-              <div>
-                <h1 className="text-4xl font-bold text-white mb-2">Surplus Management</h1>
-                <p className="text-gray-400">Redistribute excess food to nearby NGOs</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-4xl font-bold text-white mb-2">Surplus Management</h1>
+                  <p className="text-gray-400">Redistribute excess food to nearby NGOs</p>
+                </div>
+                <button
+                  onClick={() => setShowDonationForm(true)}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#E85D04] to-[#2D6A4F] text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
+                >
+                  <Plus size={20} />
+                  Create Donation
+                </button>
               </div>
 
               {donations.length === 0 ? (
@@ -718,18 +992,64 @@ export default function RestaurantDashboard() {
                 <div className="space-y-4">
                   {donations.map(donation => (
                     <div key={donation._id} className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="text-xl font-bold text-white mb-1">{donation.meals} Meals</h3>
-                          <p className="text-gray-400">Pickup: {donation.pickupTime}</p>
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-3">
+                            <h3 className="text-2xl font-bold text-white">{donation.meals} Meals Available</h3>
+                            <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
+                              donation.status === 'Delivered' ? 'bg-green-500/20 text-green-400' :
+                              donation.status === 'Accepted' ? 'bg-blue-500/20 text-blue-400' :
+                              'bg-orange-500/20 text-orange-400'
+                            }`}>
+                              {donation.status}
+                            </span>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <p className="text-gray-400 text-sm">Type</p>
+                              <p className="text-white font-medium">{donation.type}</p>
+                            </div>
+                            <div>
+                              <p className="text-gray-400 text-sm">Expiry</p>
+                              <p className="text-white font-medium">{donation.expiry}</p>
+                            </div>
+                          </div>
+
+                          {donation.status === 'Accepted' && donation.ngoName && (
+                            <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4 mt-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <CheckCircle className="text-blue-400" size={20} />
+                                <p className="text-blue-400 font-semibold">Accepted by NGO</p>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <p className="text-gray-400 text-xs">NGO Name</p>
+                                  <p className="text-white font-medium">{donation.ngoName}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs">Requested Meals</p>
+                                  <p className="text-white font-medium">{donation.requestedMeals || donation.meals} meals</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs">Accepted At</p>
+                                  <p className="text-white font-medium">
+                                    {donation.acceptedAt ? new Date(donation.acceptedAt).toLocaleString() : 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {donation.status === 'Delivered' && (
+                            <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4 mt-4">
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="text-green-400" size={20} />
+                                <p className="text-green-400 font-semibold">Delivered Successfully</p>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <span className={`px-4 py-2 rounded-full text-sm font-semibold ${
-                          donation.status === 'Delivered' ? 'bg-green-500/20 text-green-400' :
-                          donation.status === 'Accepted' ? 'bg-blue-500/20 text-blue-400' :
-                          'bg-orange-500/20 text-orange-400'
-                        }`}>
-                          {donation.status}
-                        </span>
                       </div>
                     </div>
                   ))}
@@ -742,37 +1062,37 @@ export default function RestaurantDashboard() {
             <div className="space-y-8">
               <div>
                 <h1 className="text-4xl font-bold text-white mb-2">Impact Analytics</h1>
-                <p className="text-gray-400">Track your environmental and social impact</p>
+                <p className="text-gray-400">Track your environmental and social impact from donations</p>
               </div>
 
               <div className="grid md:grid-cols-3 gap-6">
                 <StatCard
                   title="CO₂ Saved"
-                  value="37 kg"
+                  value={`${co2Saved.toFixed(1)} kg`}
                   icon={Leaf}
                   color="green"
-                  subtitle="This month"
+                  subtitle={`From ${mealsAccepted} meals donated`}
                   animate={false}
                 />
                 <StatCard
-                  title="Meals Donated"
-                  value={15}
+                  title="Meals Accepted by NGOs"
+                  value={mealsAccepted}
                   icon={Heart}
                   color="orange"
-                  subtitle="To local NGOs"
+                  subtitle={`${totalMealsDonated} meals offered total`}
                 />
                 <StatCard
-                  title="Money Saved"
-                  value="₹8,500"
+                  title="Food Waste Prevented"
+                  value={`${foodWastePrevented.toFixed(1)} kg`}
                   icon={TrendingDown}
                   color="blue"
-                  subtitle="Through waste reduction"
+                  subtitle={`${mealsDelivered} meals delivered`}
                   animate={false}
                 />
               </div>
 
               <div className="grid lg:grid-cols-2 gap-6">
-                <ChartCard title="Waste Distribution" subtitle="How we're making an impact">
+                <ChartCard title="Donation Impact Distribution" subtitle="Real-time donation status">
                   <ResponsiveContainer width="100%" height={300}>
                     <PieChart>
                       <Pie
@@ -816,7 +1136,7 @@ export default function RestaurantDashboard() {
                           stroke="url(#gradient)"
                           strokeWidth="12"
                           fill="none"
-                          strokeDasharray={`${91 * 5.026} ${100 * 5.026}`}
+                          strokeDasharray={`${sustainabilityScore * 5.026} ${100 * 5.026}`}
                           strokeLinecap="round"
                         />
                         <defs>
@@ -828,7 +1148,7 @@ export default function RestaurantDashboard() {
                       </svg>
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center">
-                          <div className="text-5xl font-bold text-white">91</div>
+                          <div className="text-5xl font-bold text-white">{sustainabilityScore}</div>
                           <div className="text-gray-400 text-sm">out of 100</div>
                         </div>
                       </div>
@@ -836,20 +1156,59 @@ export default function RestaurantDashboard() {
                   </div>
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Waste Reduction</span>
-                      <span className="text-white font-semibold">Excellent</span>
+                      <span className="text-gray-400">Donation Acceptance</span>
+                      <span className="text-white font-semibold">
+                        {donationRate > 80 ? 'Excellent' : donationRate > 60 ? 'Very Good' : donationRate > 40 ? 'Good' : 'Needs Improvement'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Pre-Order Accuracy</span>
-                      <span className="text-white font-semibold">Very Good</span>
+                      <span className="text-gray-400">Delivery Rate</span>
+                      <span className="text-white font-semibold">
+                        {deliveryRate > 80 ? 'Excellent' : deliveryRate > 60 ? 'Very Good' : deliveryRate > 40 ? 'Good' : 'Pending'}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Donation Rate</span>
-                      <span className="text-white font-semibold">Good</span>
+                      <span className="text-gray-400">Total Impact</span>
+                      <span className="text-white font-semibold">{mealsDelivered} People Helped</span>
                     </div>
                   </div>
                 </div>
               </div>
+              
+              {/* Real-time Donation Statistics */}
+              <ChartCard title="Donation Summary" subtitle="Detailed breakdown of your donations">
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <div className="text-3xl font-bold text-white mb-1">{totalMealsDonated}</div>
+                    <div className="text-gray-400 text-sm">Total Meals Offered</div>
+                  </div>
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <div className="text-3xl font-bold text-green-400 mb-1">{mealsAccepted}</div>
+                    <div className="text-gray-400 text-sm">Meals Accepted</div>
+                  </div>
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <div className="text-3xl font-bold text-blue-400 mb-1">{mealsDelivered}</div>
+                    <div className="text-gray-400 text-sm">Meals Delivered</div>
+                  </div>
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <div className="text-3xl font-bold text-orange-400 mb-1">{pendingMeals}</div>
+                    <div className="text-gray-400 text-sm">Pending Donations</div>
+                  </div>
+                </div>
+                
+                <div className="mt-6 p-4 bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-xl border border-green-500/20">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="text-green-400" size={24} />
+                    <div>
+                      <div className="text-white font-semibold">Environmental Impact</div>
+                      <div className="text-gray-300 text-sm">
+                        You've prevented <span className="text-green-400 font-bold">{foodWastePrevented.toFixed(1)} kg</span> of food waste 
+                        and saved <span className="text-blue-400 font-bold">{co2Saved.toFixed(1)} kg</span> of CO₂ emissions!
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </ChartCard>
             </div>
           )}
         </div>
@@ -975,6 +1334,226 @@ export default function RestaurantDashboard() {
                   className="flex-1 px-6 py-3 bg-gradient-to-r from-[#E85D04] to-[#2D6A4F] text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
                 >
                   {editingItem ? 'Update Item' : 'Add Item'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showDonationForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-[#1F1F1F] border border-white/20 rounded-2xl p-8 max-w-xl w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Create Donation</h2>
+              <button
+                onClick={resetDonationForm}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitDonation} className="space-y-4">
+              <div>
+                <label className="block text-gray-300 mb-2 font-medium">Number of Meals</label>
+                <input
+                  type="number"
+                  value={donationFormData.meals}
+                  onChange={(e) => setDonationFormData({ ...donationFormData, meals: Number(e.target.value) })}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                  placeholder="e.g., 50"
+                  min="1"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2 font-medium">Food Type</label>
+                <input
+                  type="text"
+                  value={donationFormData.type}
+                  onChange={(e) => setDonationFormData({ ...donationFormData, type: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                  placeholder="e.g., Veg Thali, Biryani, Mixed Cuisine"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2 font-medium">Expiry (Display Text)</label>
+                <input
+                  type="text"
+                  value={donationFormData.expiry}
+                  onChange={(e) => setDonationFormData({ ...donationFormData, expiry: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                  placeholder="e.g., 2 hours, Today evening"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2 font-medium">Expiry Date & Time</label>
+                <input
+                  type="datetime-local"
+                  value={donationFormData.expiryTime}
+                  onChange={(e) => setDonationFormData({ ...donationFormData, expiryTime: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4">
+                <p className="text-blue-400 text-sm">
+                  <strong>Note:</strong> Once created, nearby NGOs and old age homes will be notified about this donation. They can accept full or partial meals based on their requirements.
+                </p>
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={resetDonationForm}
+                  className="flex-1 px-6 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#E85D04] to-[#2D6A4F] text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
+                >
+                  Create Donation
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Form Modal */}
+      {showInventoryForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+          <div className="bg-[#1F1F1F] border border-white/20 rounded-2xl p-8 max-w-xl w-full shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-white">Add Inventory Item</h2>
+              <button
+                onClick={resetInventoryForm}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitInventory} className="space-y-4">
+              <div>
+                <label className="block text-gray-300 mb-2 font-medium">Item Name</label>
+                <input
+                  type="text"
+                  value={inventoryFormData.itemName}
+                  onChange={(e) => setInventoryFormData({ ...inventoryFormData, itemName: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                  placeholder="e.g., Tomatoes, Rice, Chicken"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-300 mb-2 font-medium">Category</label>
+                  <select
+                    value={inventoryFormData.category}
+                    onChange={(e) => setInventoryFormData({ ...inventoryFormData, category: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                    required
+                  >
+                    <option value="">Select Category</option>
+                    <option value="Vegetables">Vegetables</option>
+                    <option value="Fruits">Fruits</option>
+                    <option value="Grains">Grains</option>
+                    <option value="Dairy">Dairy</option>
+                    <option value="Meat">Meat</option>
+                    <option value="Spices">Spices</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 mb-2 font-medium">Status</label>
+                  <select
+                    value={inventoryFormData.status}
+                    onChange={(e) => setInventoryFormData({ ...inventoryFormData, status: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                    required
+                  >
+                    <option value="Good">Good</option>
+                    <option value="Near Expiry">Near Expiry</option>
+                    <option value="Critical">Critical</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-300 mb-2 font-medium">Quantity</label>
+                  <input
+                    type="number"
+                    value={inventoryFormData.quantity}
+                    onChange={(e) => setInventoryFormData({ ...inventoryFormData, quantity: Number(e.target.value) })}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                    placeholder="e.g., 50"
+                    min="0.1"
+                    step="0.1"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 mb-2 font-medium">Unit</label>
+                  <select
+                    value={inventoryFormData.unit}
+                    onChange={(e) => setInventoryFormData({ ...inventoryFormData, unit: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                    required
+                  >
+                    <option value="kg">kg</option>
+                    <option value="g">g</option>
+                    <option value="L">L</option>
+                    <option value="ml">ml</option>
+                    <option value="units">units</option>
+                    <option value="packets">packets</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-2 font-medium">Expiry Date</label>
+                <input
+                  type="date"
+                  value={inventoryFormData.expiryDate}
+                  onChange={(e) => setInventoryFormData({ ...inventoryFormData, expiryDate: e.target.value })}
+                  className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-[#E85D04] focus:border-transparent"
+                  required
+                />
+              </div>
+
+              <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
+                <p className="text-green-400 text-sm">
+                  <strong>AI Tip:</strong> Adding inventory with expiry dates helps our AI predict optimal production quantities and minimize waste!
+                </p>
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={resetInventoryForm}
+                  className="flex-1 px-6 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-[#E85D04] to-[#2D6A4F] text-white rounded-xl font-semibold hover:shadow-lg hover:scale-105 transition-all duration-300"
+                >
+                  Add Item
                 </button>
               </div>
             </form>

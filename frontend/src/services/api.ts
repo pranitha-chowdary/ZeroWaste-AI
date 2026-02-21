@@ -26,8 +26,14 @@ api.interceptors.request.use(
 // Auth APIs
 export const authAPI = {
   register: (userData: any) => api.post('/auth/register', userData),
+  verifyRegistration: (data: { email: string; otp: string; userData: any }) => 
+    api.post('/auth/verify-registration', data),
   login: (credentials: { email: string; password: string }) => 
     api.post('/auth/login', credentials),
+  verifyLogin: (data: { email: string; otp: string }) => 
+    api.post('/auth/verify-login', data),
+  resendOTP: (data: { email: string; purpose: string }) => 
+    api.post('/auth/resend-otp', data),
   getProfile: () => api.get('/auth/profile'),
 };
 
@@ -66,7 +72,7 @@ export const donationAPI = {
   getNGODonations: () => api.get('/donations/ngo'),
   getHistory: () => api.get('/donations/history'),
   create: (donation: any) => api.post('/donations', donation),
-  accept: (id: string) => api.put(`/donations/${id}/accept`),
+  accept: (id: string, data?: any) => api.put(`/donations/${id}/accept`, data),
   markDelivered: (id: string) => api.put(`/donations/${id}/deliver`),
 };
 
@@ -75,6 +81,7 @@ export const predictionAPI = {
   getDemand: () => api.get('/predictions/demand'),
   getProduction: () => api.get('/predictions/production'),
   getOptimization: () => api.get('/predictions/optimize'),
+  getMLOptimization: () => api.get('/predictions/ml-optimize'),
   create: (prediction: any) => api.post('/predictions', prediction),
   updateActual: (id: string, data: any) => api.put(`/predictions/${id}/actual`, data),
 };
