@@ -18,18 +18,22 @@ connectDB();
 
 const app = express();
 
-// CORS — allow localhost in dev and Netlify in production
+// CORS — allow localhost in dev and any Netlify URL in production
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:5174',
-  process.env.FRONTEND_URL, // set this on Render to your Netlify URL
-].filter(Boolean);
+];
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman)
+    // Allow requests with no origin (curl, Postman, mobile apps)
     if (!origin) return callback(null, true);
+    // Allow localhost
     if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Allow any netlify.app subdomain (covers preview deploys too)
+    if (/\.netlify\.app$/.test(origin)) return callback(null, true);
+    // Allow custom domain if set in env
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) return callback(null, true);
     callback(new Error(`CORS blocked: ${origin}`));
   },
   credentials: true
