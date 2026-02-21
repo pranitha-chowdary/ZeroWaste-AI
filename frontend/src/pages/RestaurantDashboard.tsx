@@ -25,7 +25,7 @@ import {
   Clock
 } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { menuAPI, orderAPI, inventoryAPI, donationAPI } from '../services/api';
+import { menuAPI, orderAPI, inventoryAPI, donationAPI, predictionAPI } from '../services/api';
 
 interface MenuItem {
   _id?: string;
@@ -76,6 +76,7 @@ export default function RestaurantDashboard() {
   const [preOrders, setPreOrders] = useState<PreOrder[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [donations, setDonations] = useState<Donation[]>([]);
+  const [optimization, setOptimization] = useState<any>(null);
   const [showMenuForm, setShowMenuForm] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [formData, setFormData] = useState<MenuItem>({
@@ -108,6 +109,8 @@ export default function RestaurantDashboard() {
       fetchMenuItems();
     } else if (activeTab === 'orders') {
       fetchOrders();
+    } else if (activeTab === 'predictions') {
+      fetchOptimization();
     } else if (activeTab === 'inventory') {
       fetchInventory();
     } else if (activeTab === 'surplus') {
@@ -149,6 +152,15 @@ export default function RestaurantDashboard() {
       setDonations(response.data);
     } catch (error) {
       console.error('Failed to fetch donations:', error);
+    }
+  };
+
+  const fetchOptimization = async () => {
+    try {
+      const response = await predictionAPI.getOptimization();
+      setOptimization(response.data);
+    } catch (error) {
+      console.error('Failed to fetch optimization:', error);
     }
   };
 
@@ -423,15 +435,229 @@ export default function RestaurantDashboard() {
           {activeTab === 'predictions' && (
             <div className="space-y-8">
               <div>
-                <h1 className="text-4xl font-bold text-white mb-2">AI Predictions</h1>
-                <p className="text-gray-400">AI-powered demand forecasting (Coming Soon)</p>
+                <h1 className="text-4xl font-bold text-white mb-2">AI Production Optimization Engine</h1>
+                <p className="text-gray-400">Your system doesn't just predict demand—it optimizes production</p>
               </div>
 
-              <div className="text-center py-20 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
-                <Brain className="mx-auto mb-4 text-gray-500" size={64} />
-                <p className="text-gray-400 text-xl">AI Prediction Features Coming Soon</p>
-                <p className="text-gray-500 text-sm mt-2">We're working on advanced AI predictions for demand forecasting</p>
-              </div>
+              {!optimization ? (
+                <div className="text-center py-20 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
+                  <Brain className="mx-auto mb-4 text-gray-500 animate-pulse" size={64} />
+                  <p className="text-gray-400 text-xl">Loading AI Optimization...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Summary Cards */}
+                  <div className="grid md:grid-cols-4 gap-6">
+                    <StatCard
+                      title="System Status"
+                      value={optimization.summary.status}
+                      icon={optimization.summary.status === 'Good' ? CheckCircle : AlertTriangle}
+                      color={optimization.summary.status === 'Good' ? 'green' : 'orange'}
+                      subtitle="Overall health"
+                    />
+                    <StatCard
+                      title="Optimization Score"
+                      value={`${optimization.summary.optimizationScore}%`}
+                      icon={Brain}
+                      color="blue"
+                      subtitle="Efficiency rating"
+                    />
+                    <StatCard
+                      title="Critical Alerts"
+                      value={optimization.summary.criticalAlerts}
+                      icon={AlertTriangle}
+                      color="red"
+                      subtitle="Require attention"
+                    />
+                    <StatCard
+                      title="Recommendations"
+                      value={optimization.summary.totalRecommendations}
+                      icon={Brain}
+                      color="green"
+                      subtitle="Smart insights"
+                    />
+                  </div>
+
+                  {/* Waste Minimization Alerts */}
+                  {optimization.wasteAlerts.length > 0 && (
+                    <div className="bg-gradient-to-r from-red-500/20 to-orange-500/20 backdrop-blur-xl border border-red-500/30 rounded-2xl p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <AlertTriangle className="text-red-500" size={32} />
+                        <h2 className="text-2xl font-bold text-white">Waste Minimization Alerts</h2>
+                      </div>
+                      <div className="space-y-3">
+                        {optimization.wasteAlerts.map((alert: any, index: number) => (
+                          <div 
+                            key={index}
+                            className={`p-4 rounded-xl ${
+                              alert.severity === 'high' 
+                                ? 'bg-red-500/20 border border-red-500/50' 
+                                : 'bg-orange-500/20 border border-orange-500/50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="px-2 py-1 bg-white/10 rounded text-xs font-semibold text-white">
+                                    {alert.type}
+                                  </span>
+                                  <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                    alert.severity === 'high' ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'
+                                  }`}>
+                                    {alert.severity.toUpperCase()}
+                                  </span>
+                                </div>
+                                <p className="text-white font-medium mb-1">{alert.message}</p>
+                                <p className="text-gray-300 text-sm">Action: {alert.action}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Production Recommendations */}
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                    <div className="flex items-center gap-3 mb-6">
+                      <Brain className="text-blue-500" size={32} />
+                      <div>
+                        <h2 className="text-2xl font-bold text-white">AI Kitchen Planner</h2>
+                        <p className="text-gray-400 text-sm">Smart production recommendations to reduce supply wastages</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {optimization.recommendations.slice(0, 10).map((rec: any, index: number) => (
+                        <div 
+                          key={index}
+                          className="bg-white/5 border border-white/10 rounded-xl p-5 hover:bg-white/10 transition-all"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <h3 className="text-xl font-bold text-white">{rec.dish}</h3>
+                                <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                                  rec.priority === 'Urgent' ? 'bg-red-500 text-white' :
+                                  rec.priority === 'High' ? 'bg-orange-500 text-white' :
+                                  rec.priority === 'Medium' ? 'bg-yellow-500 text-black' :
+                                  'bg-gray-500 text-white'
+                                }`}>
+                                  {rec.priority}
+                                </span>
+                                <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium">
+                                  {rec.category}
+                                </span>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                                <div>
+                                  <p className="text-gray-400 text-xs">Recommended</p>
+                                  <p className="text-white font-bold text-lg">{rec.recommended} units</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs">Current Stock</p>
+                                  <p className="text-white font-bold text-lg">{rec.currentStock}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs">Avg Daily Demand</p>
+                                  <p className="text-white font-bold text-lg">{rec.avgDailyDemand}</p>
+                                </div>
+                                <div>
+                                  <p className="text-gray-400 text-xs">Potential Profit</p>
+                                  <p className="text-green-400 font-bold text-lg">{rec.potentialProfit}</p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 text-sm">
+                                <Leaf className="text-green-500" size={16} />
+                                <p className="text-gray-300">{rec.reason}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Inventory Status */}
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Package className="text-purple-500" size={28} />
+                        <h2 className="text-xl font-bold text-white">Inventory Analysis</h2>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-4">
+                          <p className="text-green-400 text-sm mb-1">Good Stock</p>
+                          <p className="text-white text-3xl font-bold">{optimization.inventoryAnalysis.good}</p>
+                        </div>
+                        <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-xl p-4">
+                          <p className="text-yellow-400 text-sm mb-1">Near Expiry</p>
+                          <p className="text-white text-3xl font-bold">{optimization.inventoryAnalysis.nearExpiry}</p>
+                        </div>
+                        <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4">
+                          <p className="text-red-400 text-sm mb-1">Critical</p>
+                          <p className="text-white text-3xl font-bold">{optimization.inventoryAnalysis.critical}</p>
+                        </div>
+                        <div className="bg-blue-500/20 border border-blue-500/50 rounded-xl p-4">
+                          <p className="text-blue-400 text-sm mb-1">Total Items</p>
+                          <p className="text-white text-3xl font-bold">{optimization.inventoryAnalysis.totalItems}</p>
+                        </div>
+                      </div>
+
+                      {optimization.inventoryAnalysis.criticalItems.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-gray-400 text-sm font-semibold mb-2">Critical Items:</p>
+                          {optimization.inventoryAnalysis.criticalItems.slice(0, 3).map((item: any, index: number) => (
+                            <div key={index} className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-white font-medium">{item.ingredient}</span>
+                                <span className="text-red-400 text-sm">{item.daysLeft}d left</span>
+                              </div>
+                              <p className="text-gray-400 text-xs mt-1">{item.quantity}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Profit Insights */}
+                    <div className="bg-gradient-to-br from-green-500/20 to-blue-500/20 backdrop-blur-xl border border-green-500/30 rounded-2xl p-6">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Award className="text-green-500" size={28} />
+                        <h2 className="text-xl font-bold text-white">Profit Maximization</h2>
+                      </div>
+
+                      <div className="mb-6">
+                        <p className="text-gray-400 text-sm mb-2">Total Potential Profit (Today)</p>
+                        <p className="text-green-400 text-4xl font-bold">${optimization.profitInsights.totalPotentialProfit}</p>
+                      </div>
+
+                      <div>
+                        <p className="text-gray-400 text-sm font-semibold mb-3">Top Performers (This Week)</p>
+                        <div className="space-y-3">
+                          {optimization.profitInsights.topPerformers.map((item: any, index: number) => (
+                            <div key={index} className="bg-white/10 border border-white/20 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="w-6 h-6 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                  {index + 1}
+                                </span>
+                                <span className="text-white font-semibold">{item.name}</span>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <span className="text-green-400 font-bold">{item.weeklyProfit}</span>
+                                <span className="text-blue-400 text-xs">{item.demandTrend}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

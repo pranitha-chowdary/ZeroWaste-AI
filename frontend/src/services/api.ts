@@ -74,6 +74,7 @@ export const donationAPI = {
 export const predictionAPI = {
   getDemand: () => api.get('/predictions/demand'),
   getProduction: () => api.get('/predictions/production'),
+  getOptimization: () => api.get('/predictions/optimize'),
   create: (prediction: any) => api.post('/predictions', prediction),
   updateActual: (id: string, data: any) => api.put(`/predictions/${id}/actual`, data),
 };

@@ -4,7 +4,8 @@ const {
   getDemandPredictions,
   getProductionRecommendations,
   createPrediction,
-  updateActualProduction
+  updateActualProduction,
+  getProductionOptimization
 } = require('../controllers/predictionController');
 const { protect, restaurant } = require('../middleware/auth');
 
@@ -13,6 +14,7 @@ router.use(protect, restaurant);
 
 router.get('/demand', getDemandPredictions);
 router.get('/production', getProductionRecommendations);
+router.get('/optimize', getProductionOptimization);
 router.post('/', createPrediction);
 router.put('/:id/actual', updateActualProduction);
 
